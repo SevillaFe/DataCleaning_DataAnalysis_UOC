@@ -140,6 +140,13 @@ library(moments) # Compute skewness of a univariate distribution.
 library(caret) # Pre-processing transformation (centering, scaling etc.) can be estimated from the training data and applied to any data set with the same variables.
 library(nortest) # Performs the Lilliefors (Kolmogorov-Smirnov) test for the composite hypothesis of normality,
 library(car) # VIF Regression: A Fast Regression Algorithm For Large Data
+library(e1071) #Functions for latent class analysis, short time Fourier transform, fuzzy clustering, support vector machines, shortest path computation, bagged clustering, naive Bayes classifier.
+library(party)# A computational toolbox for recursive partitioning.
+library(rpart) # Recursive partitioning for classification, regression and survival trees
+library(rpart.plot) # Plot an rpart model
+library(ROCR) #ROC graphs, sensitivity/specificity curves, lift charts, and precision/recall plots
+library(randomForest) #Classification and regression based on a forest of trees using random inputs, based on Breiman (2001)
+library(cluster) # Methods for Cluster analysis.
 ```
 
 
@@ -148,12 +155,12 @@ library(car) # VIF Regression: A Fast Regression Algorithm For Large Data
 En primer lugar vamos a proceder a cargar ambos archivos. En este caso se han extraído directaemnte de la url, de modo que no tengan que pasar por nuestro dispositivo, optimizando el proceso. No obstante, se adjunta la línea de código comentada para cargar los archivos desde la carpeta raíz, por si hubiera alguna modificación de la url.
 ```{r message=FALSE, warning=FALSE, chunck3}
 # Se carga el primer conjunto de datos
-white_url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"
+white_url <- "http://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"
 whitewine <- read.csv(white_url, header = TRUE, sep = ";")
 # whitewine <- read.csv(winequality-white.csv, header = TRUE, sep = ";")
 
 # Se carga el segundo conjunto de datos
-red_url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
+red_url <- "http://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
 redwine <- read.csv(white_url, header = TRUE, sep = ";")
 #redwine <- read.csv(winequality-red.csv, header = TRUE, sep = ";")
 
@@ -166,12 +173,16 @@ Unión de los conjuntos de datos
 ```{r echo=TRUE, message=FALSE, warning=FALSE, chunck4}
 # Mediante la función rbind se unen (join) verticalmente los conjuntos de datos
 wine <- rbind(redwine, whitewine)
+#Una vez unidos creamos una nueva columna para futuros modelos que evaluarán la calidad
+quality.factor <- ifelse(wine$quality >= 6, "Buena", "Mala")
+wine <- data.frame(wine, quality.factor)
+table(wine$quality.factor)
 ```
 
 
 Empezaremos haciendo un breve análisis de los datos ya que nos interesa tener una idea general de los datos que disponemos. Por ello, primero calcularemos las dimensiones de nuestra base de datos y analizaremos qué tipos de atributos tenemos.
 
-Para empezar, calculamos las dimensiones mediante la función dim(). Obtenemos que disponemos de 9796 registros (filas) y 13 variables (columnas). 
+Para empezar, calculamos las dimensiones mediante la función dim(). Obtenemos que disponemos de 9796 registros (filas) y 13 variables (columnas).
 ```{r echo=TRUE, message=FALSE, warning=FALSE, chunck5}
 # Dimensiones de la base de datos
 dim(wine)
@@ -192,6 +203,7 @@ summary(wine)
 Factorizamos la variable "color" para futuros análisis.
 ```{r echo=TRUE, message=FALSE, warning=FALSE, chunck7}
 wine$color<-as.factor(wine$color)
+wine$quality.factor<-as.factor(wine$quality.factor)
 ```
 
 Se eliminan los registros duplicados si los  hubiese
@@ -243,6 +255,7 @@ boxplot(quality  , main="quality boxplot")
 
 # Representamos gráfico de barras de las variables nominales
 barplot(table(color), main="Color histogram")
+barplot(table(quality.factor), main="quality.factor histogram")
 detach(wine)
 ```
 
@@ -313,11 +326,16 @@ skewness(trans.alcohol)
 detach(new_wine)
 ```
 
+Si el coeficiente de asimetría no se aproxima a 0, entonces su conjunto de datos no se distribuye normalmente.  
+
 Ahora la mayoría las distribuciones son aproximadamente simétricas (la asimetría está entre -0,5 y 0,5). Las únicas variables que muestran aún una asimestría son:  
 * trans.citric.acid
 * trans.density
 
-Se va a realizar ejemplarmente una comprobación de la normalidad para la variable trans.citric.acid.
+Se a va a comprobr mediante gráfico de cuantiles teóricos (Gráficos Q-Q) la normalidad de las dos variables que muestran aín coeficientes de simetría alejados de 0.  
+Para el resto de variables no es necesario comprobarlo ya que sus coeficientes se distribuyen alrededor de  0 y por tanto se distribuyen normalmente.
+
+Se realiza una comprobación de la normalidad para la variable __trans.citric.acid__.
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, chunck14}
 # Para comprobar la normalidad de la variable trans.citric.acid se va a usar:
@@ -357,11 +375,179 @@ lillie.test(x=new_wine$trans.citric.acid)
 
 Dado que $p-value<\alpha$ se rechaza $\ H_0:$. La muestra no proviene de una distribución normal. Pero, puesto que el tamaño de la muestra es mayor a 30, según el teorema del límite central, asumimos la normalidad.
 
+
+Se realiza una comprobación de la normalidad para la variable __trans.density__.
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck16}
+# Para comprobar la normalidad de la variable trans.citric.acid se va a usar:
+# 1. Gráfico de cuantiles teóricos (Gráficos Q-Q): Consiste en comparar los cuantiles de la distribución observada con los cuantiles teóricos de una distribución normal con la misma media y desviación estándar que los datos. Cuanto más se aproximen los datos a una normal, más alineados están los puntos entorno a la recta.
+# 2. Un histograma
+# 3. Diagrama de cajas
+par(mfrow = c(1, 3)) 
+hist(new_wine$trans.density, las=1, main="Distribución normal", font.main=1, ylab="Frecuencia", xlab = "trans.density") 
+qqnorm(new_wine$trans.density, las=1, pch=18, main="Simetria", font.main=1, xlab="Cuantiles teóricos", ylab="Cuantiles muestrales") 
+qqline(new_wine$trans.density) 
+boxplot(new_wine$trans.density, las=1, main="Valores extremos", font.main=1, xlab="Datos de distribution normal", horizontal=F)
+```
+
+Presenta una asimetría en en la cola izquierda.
+
+Para asegurarnos completamente se realiza la pruena de Lilliefors (Kolmogorov-Smirnov) para muestras grandes (n>50).  
+El test Lilliefors asume que la media y varianza son desconocidas, estando especialmente desarrollado para contrastar la normalidad.  
+Es la alternativa al test de Shapiro-Wilk cuando el número de observaciones es mayor de 50. La función lillie.test() del paquete nortest permite aplicarlo.
+
+__Planteamos la Hipótesis:__
+
+$\ H_0:$ La muestra proviene de una distribución normal.  
+$\ H_1:$ La muestra no proviene de una distribución normal.
+
+__Nivel de significancia:__
+El nivel de significancia que se trabajará es de 0.05. $\alpha=0.05$
+
+__Criterio de decisón:__
+
+Si $p<\alpha$ se rechaza $\ H_0:$  
+Si $p>\alpha$ no se rechaza $\ H_0:$
+ 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck17}
+lillie.test(x=new_wine$trans.density)
+```
+
+Dado que $p-value<\alpha$ se rechaza $\ H_0:$. La muestra no proviene de una distribución normal. Pero, puesto que el tamaño de la muestra es mayor a 30, según el teorema del límite central, asumimos la normalidad.
+
+
 ### Eliminación de los Outliers
+
+Se analiza cada variable independientemente para determinar qué valores atípicos, si los hay, deben ser eliminados.
+
+__trans.fixed.acidity__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck18}
+boxplot(trans.fixed.acidity ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="Fixed Acidity")
+
+summary(new_wine$trans.fixed.acidity)
+quantile(new_wine$trans.fixed.acidity, c(.999))
+new_wine$trans.quality[new_wine$trans.fixed.acidity > 3.4]
+```
+Se observan bastantes valores atípicos, especialmente para la calidad de 6. El mayor es tres veces más grande que el valor del tercer cuartil.  
+El 99,9% de las observaciones tienen una acidez fija tras la normalización de los datos de 3,34 o menos.  
+Hay 6 outliers. De nuevo, la mayoría de ellas están clasificadas con una calidad de 6. Esto no es sorprendente, porque muchas observaciones en el conjunto de datos están clasificadas como calidad 6.
+
+__trans.volatile.acidity__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck19}
+boxplot(trans.volatile.acidity ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="volatile acidity")
+
+summary(new_wine$trans.volatile.acidity)
+quantile(new_wine$trans.volatile.acidity, c(.999))
+new_wine$trans.quality[new_wine$trans.volatile.acidity > 3.7]
+```
+Esta vez la mayoría de los outliers tienen la calidad 4. Esto es interesante porque no hay muchas observaciones con la calidad 4. La acidez puede ser un factor clave para predecir los vinos malos, por ello puede que estos no sean en realidad valores atípicos.
+
+__trans.citric.acid__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck20}
+boxplot(trans.citric.acid ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="citric acid")
+
+summary(new_wine$trans.citric.acid)
+quantile(new_wine$trans.citric.acid, c(.999))
+new_wine$trans.quality[new_wine$trans.citric.acid > 5.5]
+```
+La mayoría de outliers están clasificados como 6 en calidad. El boxplot es interesante porque tanto el vino de calidad 3 como el de calidad 9 no tienen outliers y todos los demás rangos sí. Esto podría ser sólo una casualidad. También podría ser que la variación en el ácido cítrico está de alguna manera relacionada con los vinos de nivel medio.
+
+__trans.residual.sugar__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck21}
+boxplot(trans.residual.sugar ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="residual sugar")
+
+summary(new_wine$trans.residual.sugar)
+quantile(new_wine$trans.residual.sugar, c(.999))
+new_wine$trans.quality[new_wine$trans.residual.sugar > 2.0]
+```
+EL boxplot no muestra valores atípicos. La calidad 6 muestra 6 valores altos.
+
+__trans.chlorides__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck22}
+boxplot(trans.chlorides ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="chlorides")
+
+summary(new_wine$trans.chlorides)
+quantile(new_wine$trans.chlorides, c(.999))
+new_wine$trans.quality[new_wine$trans.chlorides > 3.8]
+```
+Los vinos con calidad 9 están muy bien distribuidos y no hay outliers. Además, la media es más baja para este grupo que para cualquier otro. Es posible que un nivel muy bajo de cloruros sea indicativo de un muy buen vino. También podría ser debido al número extremadamente pequeño de vinos calidad 9.
+
+__trans.free.sulfur.dioxide__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck23}
+boxplot(trans.free.sulfur.dioxide ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="free sulfur dioxide")
+
+summary(new_wine$trans.free.sulfur.dioxide)
+quantile(new_wine$trans.free.sulfur.dioxide, c(.999))
+new_wine$trans.quality[new_wine$trans.free.sulfur.dioxide > 3.9]
+```
+
+Todos las calidades tienen al menos un atípico y los medios son bastante similares con la excepción de 4. Parece que a medida que la calidad mejora, el rango de variación tiende a disminuir.
+
+__trans.total.sulfur.dioxide__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck24}
+boxplot(trans.total.sulfur.dioxide ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="total sulfur dioxide")
+
+summary(new_wine$trans.total.sulfur.dioxide)
+quantile(new_wine$trans.total.sulfur.dioxide, c(.999))
+new_wine$trans.quality[new_wine$trans.total.sulfur.dioxide > 3.5]
+```
+La variación tiende a disminuir con la mejora de la calidad del vino.
+
+__trans.density__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck25}
+boxplot(trans.density ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="trans density")
+
+summary(new_wine$trans.density)
+quantile(new_wine$trans.density, c(.999))
+new_wine$trans.quality[new_wine$trans.density > 3.0]
+```
+La calidad 6 muestra un claro outlier. Dada la cantidad de vinos con calidad 6, parece poco probable que una densidad de este nivel sea precisa o representativa del grupo.
+
+__trans.pH__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck26}
+boxplot(trans.pH ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="trans pH")
+
+summary(new_wine$trans.pH)
+quantile(new_wine$trans.pH, c(.999))
+new_wine$trans.quality[new_wine$trans.pH > 3.2]
+```
+Se observa una mayor dispersión en la calidad 3, pero no hay valores atípicos, mientras que la calidad 9 muestra una menor dispersión.
+
+__trans.sulphates__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck27}
+boxplot(trans.sulphates ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="trans sulphates")
+
+summary(new_wine$trans.sulphates)
+quantile(new_wine$trans.sulphates, c(.999))
+new_wine$trans.quality[new_wine$trans.sulphates > 3.0]
+```
+Las medias de las calidades estaán todas en el mismo nivel. Es difícil diferenciar, a partir de las medias, si los sulfatos pueden llegar a influenciar en la calidad.
+
+__trans.alcohol__
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck28}
+boxplot(trans.alcohol ~ trans.quality , data=new_wine,
+        xlab="Quality", ylab="trans alcohol")
+
+summary(new_wine$trans.alcohol)
+quantile(new_wine$trans.alcohol, c(.999))
+new_wine$trans.quality[new_wine$trans.alcohol > 2.21]
+new_wine$trans.quality[new_wine$trans.alcohol < -2.8]
+```
+Parece haber una relación entre el alcohol y la calidad.
 
 
 Procedemos a eliminar los valores outliers encontardos en los gráficos boxplot anteriores.
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck16}
+```{r echo=TRUE, message=FALSE, warning=FALSE,chunck29}
 # Mostramos los valores identificados como outliers
 attach(new_wine)
 f_a_out<-boxplot.stats(trans.fixed.acidity)$out
@@ -381,7 +567,7 @@ detach(new_wine)
 
 
 Las variables trans.alcohol, trans.residual.sugar y trans.color no presentan outliers. 
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck17}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck30}
 # Eliminamos las instancias con outlier
 new_wine<-new_wine[-which(new_wine$trans.fixed.acidity %in% f_a_out),]
 new_wine<-new_wine[-which(new_wine$trans.volatile.acidity %in% v_a_out),]
@@ -399,7 +585,7 @@ new_wine<-new_wine[-which(new_wine$trans.quality %in% qa_out),]
 ### Análisis de diagnóstico
 
 Tras haber eliminado los valores atípicos, revisamos la correlación entre las distintas variables. El objetivo es centrar el análisis descriptivo en aquellas variables que presentan correlación.
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck18}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck31}
 #Se omite la variable color para pocer representar la matriz de correlación
 corrplot(cor(new_wine[1:12]))
 ```
@@ -415,7 +601,7 @@ Observando los resultados se verifica que:
 A continuación se estudian visaulamente las posibles correlaciones entre:
 
 ###  Variables residual.sugar y density
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck19}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck32}
 # Calculamos la correlación y la mostramos por pantalla
 RS_D_cor = cor(new_wine$trans.residual.sugar,new_wine$trans.density)
 print(RS_D_cor)
@@ -427,7 +613,7 @@ abline(lm(new_wine$trans.density~new_wine$trans.residual.sugar), col="red") # re
 Como podemos apreciar en la gráfica existe una fuerte relación lineal entre ambas variables y todos los puntos se ajustan bastante bien a la linea. El resultado de la correlación, 0.75, refuerza lo comentado anteriormente.
 
 ### Variables density y alcochol
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck20}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck33}
 # Calculamos la correlación y la mostramos por pantalla
 D_A_cor = cor(new_wine$trans.density,new_wine$trans.alcohol)
 print(D_A_cor)
@@ -440,7 +626,7 @@ Al igual que antes, existe una fuerte relación lineal entre ambas variables y l
 
 ### Todas las variables y quality
 
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck21}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck34}
 # Calculamos la correlación y la mostramos por pantalla
 par(mfrow = c(1,2))
 for (i in c(1:11)) {
@@ -472,7 +658,7 @@ $$
 
 
 EL método que se aplica es un contraste de hipótesis para dos muestras independientes. El test es paramétrico, asumiendo el teorema del límite central. Es un test unilateral, con varianzas desconocidas, pero iguales, ya que el test de varianzas no rechaza la hipótesis nula de varianzas iguales.
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck22}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck35}
 #Test de igualdad de varianzas
 #H0: F (ratio de varianzas) = 1
 #H1: F diferente de 1
@@ -482,7 +668,7 @@ var.test(new_wine$trans.citric.acid[new_wine$trans.color=="white"], new_wine$tra
 
 
 A continuación se lleva a cabo el contraste de hipótesis:
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck23}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck36}
 #Se define una función myttest.
 #x1, x2: muestras
 #CL: confidence level (nivel de confianza)
@@ -530,7 +716,7 @@ return (info)
 ```
 
 Se visualizan tanto el estadístico como el valor p:
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck24}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck37}
 info<-myttest( new_wine$trans.citric.acid[new_wine$trans.color=="white"], 
                new_wine$trans.citric.acid[new_wine$trans.color=="red"], 
                alternative="less",
@@ -540,7 +726,7 @@ info
 ```
 
 Dado que hemos aplicado una función propia comprobamos el resultado con la fución original de R.
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck25}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck38}
 #Comparación con t.test de R
 t.test( new_wine$trans.citric.acid[new_wine$trans.color=="white"], new_wine$trans.citric.acid[new_wine$trans.color=="red"], alternative = "less",
         var.equal = TRUE)
@@ -557,7 +743,7 @@ El valor p es 0.5, mayor que el nivel de significación es 0.05 (95%). **No pode
 
 Realizad los cálculos manualmente del test. Para ello, se recomienda construir una función my.chisq que realice estos cálculos y que podáis reusar más adelante.
 
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck26}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck39}
 # Realizamos el test con la función chisq.test para comprobar los resultados.
 chisq.test(new_wine$trans.color,new_wine$trans.quality)
 ```
@@ -571,9 +757,20 @@ Del mismo modo, el p valor es mayor al nivel de confianza 0.05 por tanto tambié
 Vamos a aplicar un modelo de regresión lineal multivariable. El objetivo consistirá en predecir la calidad del vino en función de las otras variables.
 
 Antes de elegir el mejor modelo lineal vamos a dividir el conjunto de datos en dos:  
-1. Set de entrenamiento  
-2. Set de prueba
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck27}
+1. Set de entrenamiento: Un subconjunto para entrenar un modelo (80% de los datos)   
+2. Set de prueba:Un subconjunto para probar el modelo entrenado (20% de lod datos)
+
+```{r, out.width = "50%", fig.align="center", fig.retina = 2, echo=FALSE, fig.cap="División del conjunto de datos", chunck40}
+library(knitr)
+include_graphics("División Datos.png")
+```
+
+Esta división se ha llevado a cabo para cumplir con los siguientes condiciones:
+* Que sea lo suficientemente grande como para generar resultados significativos desde el punto de vista estadístico.  
+* Que sea representativo de todo el conjunto de datos.  
+
+Se divide el conjunto de datos (80% entrenamiento - 20% test)
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck41}
 set.seed(100)
 #new_wine$trans.color<-as.numeric(new_wine$trans.color)
 trainingRowIndex <- sample(1:nrow(new_wine), 0.8*nrow(new_wine))  
@@ -581,9 +778,10 @@ new_wine_train <- new_wine[trainingRowIndex, ]
 new_wine_test  <- new_wine[-trainingRowIndex, ]  
 ```
 
+__Regresión lineal Múltiple.__
 
 Realizamos el primer modelo
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck28}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck42}
 # Incluimos todas las variables 
 modelo_1 <- lm(trans.quality ~ . , new_wine_train) 
 summary(modelo_1)
@@ -615,54 +813,180 @@ Fuentes:
 *[Multicolinealidad](https://www.uv.es/uriel/material/multicolinealidad3.pdf)
 
 Analizamos la multicolinealidad mediante el análisis del valor VIF
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck29}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck43}
 vif(modelo_1)
 ```
 
 Se observa multicolinealidad en la variable trans.density y se procede a eliminarla del modelo.  
 Ajustamos el modelo de nuevo
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck30}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck44}
 # excluímos la variable trans.density
 modelo_2 <- lm(trans.quality ~ . -trans.density, new_wine_train) 
 summary(modelo_2)
 ```
 
 Analizamos la multicolinealidad mediante el análisis del valor VIF
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck31}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck45}
 vif(modelo_2)
 ```
 
 Los valores VIF son menores de 5 para todas las variables, en otras palabras la colinealidad es muy baja con el modelo 2.
 
 Ajustamos un modelo nuevo con las variables que presentan significación:
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck32}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck46}
 modelo_3 <- lm(trans.quality ~  trans.volatile.acidity +trans.free.sulfur.dioxide +trans.alcohol , new_wine_train) 
 summary(modelo_3)
 ```
 
 Los valores VIF son menores de 1.1 para todas las variables, en otras palabras la no hay colinealidad en el modelo 3.
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck33}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck47}
 vif(modelo_3)
 ```
 
+__Árbol de decición.__
+
+Al igual que para el modelo realizado anteriormente, para la futura evaluación del árbol de decisión, es necesario dividir el conjunto de datos en un conjunto de entrenamiento y un conjunto de prueba.   
+Esta vez tras la división se llevará a cabo una normalización de los conjuntos de datos para evitar que alguna variable con valores más altos pueda influenciar a las otras.
+
+No hay ninguna proporción fijada con respecto al número relativo de componentes de cada subconjunto, pero la más utilizada acostumbra a ser 2/3 para el conjunto de entrenamiento y 1/3, para el conjunto de prueba.
+
+La variable por la que clasificaremos es el campo de si el vino es de alta o baja calidad, que está en la última columna.
+
+Se divide el conjunto de datos en conjuntos de entrenamiento y prueba. La relación entrenamiento / prueba es normalmente de 70/30 ((2*6486/3=4.324). Queremos asegurarnos de que cada división representa el conjunto de datos en términos de las proporciones de la variable objetivo. La variable objetivo aquí es “Coste”
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck48}
+set.seed(1)
+new_wine_arbol<-new_wine[,1:12]
+train <- new_wine_arbol[1:4324,]
+test <- new_wine_arbol[4325:6486,]
+# Filas y Columnas
+n = nrow(new_wine_arbol) 
+p = ncol(new_wine_arbol)
+```
+
+Normalizamos el set de entrenamiento para que obtener un rango entre 0-1
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck49}
+normalizado_train = function(x) (x - min(x))/(max(x) - min(x))
+train.norm = data.frame(apply(train[,-p], 2, normalizado_train), 
+                        quality = train[,p])
+summary(train.norm)
+```
+
+Normalizamos el set de prueba para que obtener un rango entre 0-1
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck50}
+normalizado_test = function(x) (x - min(x))/(max(x) - min(x))
+test.norm = data.frame(apply(test[,-p], 2, normalizado_test), 
+                        quality = test[,p])
+summary(test.norm)
+```
+
+Construímos el árbol de decisión
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck51}
+arbol = rpart(quality~., data=train.norm)
+rpart.plot(arbol)
+```
+
+__Modelo modelo no supervisado y basado en el concepto de distancia__
+
+Vamos a aplicar un modelo no supervisado. Para consegirlo no usaremos la columna quality.factor, que es la variable que se quiere predecir. Por lo tanto, intentaremos encontrar agrupaciones usando el resto de atributos que caracterizan a cada vino.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck52}
+new_wine_cluster <- new_wine[,c(1:12)]
+```
+
+Como inicialmente no conocemos el número óptimo de clústers, probamos con varios valores
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck53}
+d <- daisy(new_wine_cluster) 
+resultados <- rep(0, 10)
+for (i in c(2,3,4,5,6,7,8,9,10))
+{
+  fit           <- kmeans(new_wine_cluster, i)
+  y_cluster     <- fit$cluster
+  sk            <- silhouette(y_cluster, d)
+  resultados[i] <- mean(sk[,3])
+}
+```
+
+Mostramos en un gráfica los valores de las siluetas media de cada prueba para comprobar que número de clústers es el mejor
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck54}
+plot(2:10,resultados[2:10],type="o",col="blue",pch=0,xlab="Numbero de clusters",ylab="Silueta")
+```
+
+Aunque el valor esperado es k=2, dado que el conjunto original tiene 2 factores de calidada (Bueno y Malo), el mejor valor que se obtiene es k=4.
+
+Otro forma de evaluar cual es el mejor número de clústers es considerar el mejor modelo, aquel que ofrece la menor suma de los cuadrados de las distancias de los puntos de cada grupo con respecto a su centro (withinss), con la mayor separación entre centros de grupos (betweenss). Como se puede comprobar es una idea conceptualmente similar a la silueta. Una manera común de hacer la selección del número de clústers consiste en aplicar el método elbow (codo), que no es más que la selección del número de clústers en base a la inspección de la gráfica que se obtiene al iterar con el mismo conjunto de datos para distintos valores del número de clústers. Se seleccionará el valor que se encuentra en el “codo” de la curva
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck55}
+resultados <- rep(0, 10)
+for (i in c(2,3,4,5,6,7,8,9,10))
+{
+  fit           <- kmeans(new_wine_cluster, i)
+  resultados[i] <- fit$tot.withinss
+}
+plot(2:10,resultados[2:10],type="o",col="blue",pch=0,xlab="Número de clusters",ylab="tot.tot.withinss")
+```
+En este caso el número óptimo de clústers no está tan claro dado que la curva no llega a estabilizarse.
+
+También se puede usar la función kmeansruns del paquete fpc que ejecutá el algoritmo kmeans con un conjunto de valores y selecciona el valor del número de clústers que mejor funcione de acuerdo a dos criterios la silueta media (“asw”) y Calinski-Harabasz (“ch”).
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck56}
+library(fpc)
+#x$duración_corregida<-as.numeric(x$duración_corregida)
+fit_ch  <- kmeansruns(new_wine_cluster, krange = 1:10, criterion = "ch") 
+fit_asw <- kmeansruns(new_wine_cluster, krange = 1:10, criterion = "asw") 
+```
+
+Podemos comprobar el valor con el que se ha obtenido el mejor resultado y también mostrar el resultado obtenido para todos los valores de k usando ambos criterios
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck57}
+fit_ch$bestk
+fit_asw$bestk
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck58}
+plot(1:10,fit_ch$crit,type="o",col="blue",pch=0,xlab="Número de clústers",ylab="Criterio Calinski-Harabasz")
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck59}
+plot(1:10,fit_asw$crit,type="o",col="blue",pch=0,xlab="Número de clústers",ylab="Criterio silueta media")
+```
+Los resultados son muy parecidos a los que hemos obtenido anteriormente. Con el criterio de la silueta media se obtienen dos clústers y con el Calinski-Harabasz se obtiene un peperfil parecido que muestra 2 clúster.
+
+Como se ha comprobado, conocer el número óptimo de clústers no es un problema fácil. Tampoco lo es la evaluación de los modelos de agregación.
+
+Como en el caso que estudiamos sabemos que los datos pueden ser agrupados en 2 factores de calidad, vamos a ver como se ha comportado el kmeans en el caso de pedirle 2 clústers. Para eso comparamos visualmente los campos dos a dos, con el valor real que sabemos está almacenado en el campo “quality.factor” del dataset original.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck60}
+new_wine_cluster3 <- kmeans(new_wine_cluster, 2)
+
+par(mfrow = c(1, 2)) 
+# trans.residual.sugar y trans.density
+plot(new_wine_cluster[c(4,8)], col=new_wine_cluster3$cluster)
+# trans.residual.sugar y trans.alcohol
+plot(new_wine_cluster[c(4,11)], col=new_wine_cluster3$cluster)
+```
+
+El atributo trans.residual.sugar parece hacer un mejor trabajo para dividir los vinos entre los dos factores de calidad.
+
 ### Análisis prescriptivo
 
-Predecimos valores utilizando el set de prueba
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck34}
+__Regresión Lineal__
+
+Predecimos valores utilizando el set de prueba para el modelo lineal.
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck61}
 # Se redondea el resultado para eliminar los decimales en la predicción
 modelo_3_Pred = round(predict(modelo_3, newdata=new_wine_test))
 head(modelo_3_Pred)
 ```
 
 Creamos la matriz de confusión para comprobar la precisión del modelo. Se enfrentan los valores predichos por el modelo con los valores reales del set de prueba.
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck35}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck62}
 confusionMatrix(table(modelo_3_Pred, new_wine_test$trans.quality))
 ```
 
 Nuestro modelo tiene una precisión del 52.23%
 
 Diagnosticamos el modelo a continuación
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck36}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck63}
 #Revisamos los residuos para asegurar que están distribuidos normalmente
 hist(modelo_3$residuals)
 
@@ -680,10 +1004,58 @@ Tras examinar los resultados podemos afirmar:
 * No hay evidencias de falta de homocedasticidad.   
 * No hay multicolinialidad.  
 
+__Árbol de decisión__
+
+Predecimos valores utilizando el set de prueba para el modelo del árbol de decisión.
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck64}
+predicted_model <- round(predict( arbol, test.norm[,-p] ))
+head(predicted_model)
+```
+
+Una vez tenemos el modelo, podemos comprobar su calidad prediciendo la calidad para los datos de prueba que nos hemos reservado al principio.
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck65}
+print(sprintf("La precisión del árbol es: %.4f %%",100*sum(predicted_model == test.norm) / length(predicted_model)))
+```
+
+La precisión del modelo del árbol de decisión es semejante al modelo lineal anterior.
+
+__Clusterización__
+
+Tras crear el modelo se procede a comprobar cuales de los vinos han sido mal clasificados y cómo. Eso lo conseguimos con el siguiente comando.
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck66}
+table(new_wine_cluster3$cluster,new_wine$trans.quality.factor)
+```
+
+Los resultafos de la tabla muestran que el cluster 1 corresppnde a Bueno y el dos a Malo.
+Y así, podemos sacar un porcentaje de precisión del modelo:
+
+Bien calsificados 2900 + 1320 = 4.220
+Mal clasificados 1462 + 804 = 2.266
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck67}
+print(sprintf("La precisión de la clusterización es: %.4f %%",100*4220/(4220+2266)))
+```
+
+# Representación de los resultados a partir de tablas y gráficas
+
+Durante el análisis exploratorio de los datos se han mostrado múltiples representaciones, de entre todas ellas mostramos a modo de reumen la relación entre las variables.
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.fullwidth=TRUE, chunck68}
+library(psych)
+pairs.panels(new_wine[,c(1:12)])
+```
+
+Los resultados muestran simetría en todas los atributos excepto en dos. La simetría se consiguió aplicando la transformación de Boxcox para normalizar todas las variables. Las dos únicas variables que no muestran simetría son __trans.citric.acid__ y __trans.density__ y son las dos únicas que hemos representado mediante diagramas Q-Q para observar su distribución. Representar el resto de variables transformads no hubiera mostrado ningún resultado particularmente interesante, ya que están normalizadas y lo comprobamos en la diagonal de la representación que mostramos en este apartado.
+
+# Conclusión
+
+Tras realizar la limpieza de los datos y aplicar distintos modelos para averiguar la calidad de los vinos concluímos que el modelo de clusterización es el que más precisión muestra. Sin embargo, hay que resaltar que para la construcción de los modelos no se ha llevado una procedimiento uniforme, ya que con el objetivo de practicar distintos enfoques, se han usado distintas técnicas para normalizar, estandarizar, homogenizar y separar los datos en test y prueba.
+
+Es evidente, que para poder tomar una conclusión acertada respecto al los resultados obtendos debería haberse seguido un proceso más uniforme, pero como se ha comentado, el objetivo es practicar.
+
 # Archivo preprocesado
 
 Para finalizar se genera un archivo con el conjunto de datos procesado para análisis posteriores.
-```{r echo=TRUE, message=FALSE, warning=FALSE, chunck37}
+```{r echo=TRUE, message=FALSE, warning=FALSE, chunck69}
 # Guardamos los datos
 write.csv(new_wine, file="Wine_clean.csv",row.names=F)
 ```
